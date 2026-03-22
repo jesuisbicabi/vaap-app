@@ -159,7 +159,7 @@ function startRecording() {
   recognition = new SR();
   recognition.lang = 'nl-NL';
   recognition.continuous = true;
-  recognition.interimResults = true;
+  recognition.interimResults = false;
   isRecording = true;
   transcript = '';
   document.getElementById('mic-btn').classList.add('recording');
