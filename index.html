@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VAAP — Obsidian Assistent</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f0; min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 2rem 1rem; }
+  .app { max-width: 480px; width: 100%; }
+  h1 { font-size: 22px; font-weight: 600; color: #1a1a1a; text-align: center; }
+  .subtitle { font-size: 14px; color: #888; text-align: center; margin-top: 4px; margin-bottom: 2rem; }
+  .settings-toggle { font-size: 13px; color: #888; cursor: pointer; text-decoration: underline; text-align: center; margin-bottom: 1.5rem; display: block; }
+  .settings-panel { display: none; background: #fff; border: 1px solid #e5e5e0; border-radius: 12px; padding: 1.25rem; margin-bottom: 1.5rem; }
+  .settings-panel.open { display: block; }
+  .settings-panel h2 { font-size: 12px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1rem; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 13px; color: #555; margin-bottom: 4px; }
+  .field input { width: 100%; padding: 9px 12px; font-size: 14px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; color: #1a1a1a; }
+  .field input:focus { outline: none; border-color: #aaa; background: #fff; }
+  .save-settings-btn { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; background: #fff; color: #1a1a1a; font-size: 14px; cursor: pointer; }
+  .save-settings-btn:hover { background: #f5f5f0; }
+  .mic-area { text-align: center; margin: 1.5rem 0; }
+  .mic-btn { width: 88px; height: 88px; border-radius: 50%; border: 1.5px solid #ddd; background: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: all 0.2s; }
+  .mic-btn:hover { background: #f5f5f0; }
+  .mic-btn.recording { border-color: #e24b4a; background: #fff5f5; animation: pulse 1s infinite; }
+  .mic-btn svg { color: #555; }
+  .mic-btn.recording svg { color: #e24b4a; }
+  @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+  .status { font-size: 14px; color: #888; margin-top: 10px; }
+  .transcript-box { background: #fff; border: 1px solid #e5e5e0; border-radius: 10px; padding: 14px; margin: 1rem 0; font-size: 15px; color: #1a1a1a; min-height: 64px; line-height: 1.6; display: none; }
+  .folder-label { font-size: 13px; color: #888; margin-bottom: 8px; }
+  .folder-select { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1rem; }
+  .folder-btn { padding: 6px 16px; border: 1px solid #ddd; border-radius: 20px; font-size: 13px; cursor: pointer; background: #fff; color: #888; transition: all 0.15s; }
+  .folder-btn.active { border-color: #1a1a1a; color: #1a1a1a; font-weight: 500; }
+  .action-row { display: flex; gap: 8px; margin-top: 0.5rem; }
+  .action-btn { flex: 1; padding: 12px; border-radius: 10px; border: 1px solid #ddd; font-size: 14px; cursor: pointer; background: #fff; color: #1a1a1a; transition: all 0.15s; }
+  .action-btn:hover { background: #f5f5f0; }
+  .opslaan-btn { border-color: #1D9E75; color: #0F6E56; }
+  .opslaan-btn:hover { background: #f0faf6; }
+  .zoek-btn { border-color: #378ADD; color: #185FA5; }
+  .zoek-btn:hover { background: #f0f6fd; }
+  .action-area { display: none; }
+  .response-box { background: #fff; border: 1px solid #e5e5e0; border-radius: 10px; padding: 14px; margin-top: 1rem; font-size: 14px; color: #1a1a1a; line-height: 1.7; display: none; white-space: pre-wrap; }
+  .toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); background: #1a1a1a; color: #fff; border-radius: 8px; padding: 10px 20px; font-size: 14px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 99; white-space: nowrap; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>VAAP</h1>
+  <p class="subtitle">Spreek in, sla op of zoek in je vault</p>
+
+  <a class="settings-toggle" onclick="toggleSettings()">⚙ Instellingen</a>
+
+  <div class="settings-panel" id="settings-panel">
+    <h2>Instellingen</h2>
+    <div class="field">
+      <label>Anthropic API key</label>
+      <input type="password" id="anthropic-key" placeholder="sk-ant-..." />
+    </div>
+    <div class="field">
+      <label>GitHub token</label>
+      <input type="password" id="github-token" placeholder="ghp_..." />
+    </div>
+    <div class="field">
+      <label>GitHub gebruikersnaam</label>
+      <input type="text" id="github-user" value="jesuisbicabi" />
+    </div>
+    <div class="field">
+      <label>Repository naam</label>
+      <input type="text" id="github-repo" value="obsidian-vault" />
+    </div>
+    <button class="save-settings-btn" onclick="saveSettings()">Opslaan</button>
+  </div>
+
+  <div class="mic-area">
+    <button class="mic-btn" id="mic-btn" onclick="toggleRecording()">
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+        <line x1="12" y1="19" x2="12" y2="23"/>
+        <line x1="8" y1="23" x2="16" y2="23"/>
+      </svg>
+    </button>
+    <div class="status" id="status">Tik om in te spreken</div>
+  </div>
+
+  <div class="transcript-box" id="transcript"></div>
+
+  <div class="action-area" id="action-area">
+    <p class="folder-label">Opslaan in:</p>
+    <div class="folder-select">
+      <button class="folder-btn active" data-folder="Inbox" onclick="selectFolder(this)">Inbox</button>
+      <button class="folder-btn" data-folder="InMyMind" onclick="selectFolder(this)">InMyMind</button>
+      <button class="folder-btn" data-folder="Work" onclick="selectFolder(this)">Work</button>
+      <button class="folder-btn" data-folder="2026" onclick="selectFolder(this)">2026</button>
+    </div>
+    <div class="action-row">
+      <button class="action-btn opslaan-btn" onclick="saveNote()">Opslaan in vault</button>
+      <button class="action-btn zoek-btn" onclick="askVault()">Zoek in vault</button>
+    </div>
+  </div>
+
+  <div class="response-box" id="response-box"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let recognition = null;
+let isRecording = false;
+let transcript = '';
+let selectedFolder = 'Inbox';
+let settings = {};
+
+function loadSettings() {
+  try {
+    const s = localStorage.getItem('vaap_settings');
+    if (s) settings = JSON.parse(s);
+    if (settings.anthropicKey) document.getElementById('anthropic-key').value = settings.anthropicKey;
+    if (settings.githubToken) document.getElementById('github-token').value = settings.githubToken;
+    if (settings.githubUser) document.getElementById('github-user').value = settings.githubUser;
+    if (settings.githubRepo) document.getElementById('github-repo').value = settings.githubRepo;
+  } catch(e) {}
+}
+
+function saveSettings() {
+  settings = {
+    anthropicKey: document.getElementById('anthropic-key').value.trim(),
+    githubToken: document.getElementById('github-token').value.trim(),
+    githubUser: document.getElementById('github-user').value.trim(),
+    githubRepo: document.getElementById('github-repo').value.trim()
+  };
+  localStorage.setItem('vaap_settings', JSON.stringify(settings));
+  showToast('Instellingen opgeslagen!');
+  document.getElementById('settings-panel').classList.remove('open');
+}
+
+function toggleSettings() {
+  document.getElementById('settings-panel').classList.toggle('open');
+}
+
+function selectFolder(btn) {
+  document.querySelectorAll('.folder-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  selectedFolder = btn.dataset.folder;
+}
+
+function toggleRecording() {
+  if (isRecording) { stopRecording(); return; }
+  startRecording();
+}
+
+function startRecording() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { showToast('Spraakherkenning niet beschikbaar'); return; }
+  recognition = new SR();
+  recognition.lang = 'nl-NL';
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  isRecording = true;
+  transcript = '';
+  document.getElementById('mic-btn').classList.add('recording');
+  document.getElementById('status').textContent = 'Aan het luisteren...';
+  document.getElementById('transcript').style.display = 'none';
+  document.getElementById('action-area').style.display = 'none';
+  document.getElementById('response-box').style.display = 'none';
+
+  recognition.onresult = (e) => {
+    let interim = '', final = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) final += e.results[i][0].transcript;
+      else interim += e.results[i][0].transcript;
+    }
+    if (final) transcript += final;
+    const t = document.getElementById('transcript');
+    t.style.display = 'block';
+    t.textContent = transcript + interim;
+  };
+
+  recognition.onerror = (e) => { stopRecording(); showToast('Fout: ' + e.error); };
+  recognition.onend = () => { if (isRecording) recognition.start(); };
+  recognition.start();
+}
+
+function stopRecording() {
+  isRecording = false;
+  if (recognition) { recognition.onend = null; recognition.stop(); }
+  document.getElementById('mic-btn').classList.remove('recording');
+  document.getElementById('status').textContent = 'Tik om in te spreken';
+  if (transcript.trim()) document.getElementById('action-area').style.display = 'block';
+}
+
+async function saveNote() {
+  if (!transcript.trim()) return;
+  if (!settings.anthropicKey || !settings.githubToken) { showToast('Vul eerst instellingen in'); toggleSettings(); return; }
+  showToast('Even geduld...');
+  try {
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0,10);
+    const timeStr = now.toTimeString().slice(0,5);
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': settings.anthropicKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514', max_tokens: 1000,
+        messages: [{ role: 'user', content: `Maak een nette Obsidian notitie van deze gesproken tekst. Gebruik Nederlandse taal. Voeg een passende titel toe als eerste regel (# Titel). Datum: ${dateStr}, Tijd: ${timeStr}. Gesproken tekst: "${transcript}". Geef alleen de markdown notitie terug, geen uitleg.` }]
+      })
+    });
+    const data = await resp.json();
+    const noteContent = data.content[0].text;
+    const titleMatch = noteContent.match(/^#\s+(.+)/m);
+    const title = titleMatch ? titleMatch[1].trim().replace(/[\/\\?%*:|"<>]/g, '-') : `notitie-${dateStr}`;
+    const filename = `${selectedFolder}/${dateStr}-${title}.md`;
+    await saveToGitHub(filename, noteContent);
+    showToast('Opgeslagen in ' + selectedFolder + '!');
+    const box = document.getElementById('response-box');
+    box.style.display = 'block';
+    box.textContent = 'Opgeslagen als:\n' + filename;
+    transcript = '';
+    document.getElementById('transcript').style.display = 'none';
+    document.getElementById('action-area').style.display = 'none';
+  } catch(e) { showToast('Fout: ' + e.message); }
+}
+
+async function saveToGitHub(path, content) {
+  const { githubUser: user, githubRepo: repo, githubToken: token } = settings;
+  const url = `https://api.github.com/repos/${user}/${repo}/contents/${path}`;
+  const encoded = btoa(unescape(encodeURIComponent(content)));
+  let sha = null;
+  try { const c = await fetch(url, { headers: { Authorization: `token ${token}` }}); if (c.ok) { const d = await c.json(); sha = d.sha; } } catch(e) {}
+  const body = { message: `VAAP: ${path}`, content: encoded };
+  if (sha) body.sha = sha;
+  const r = await fetch(url, { method: 'PUT', headers: { Authorization: `token ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!r.ok) { const err = await r.json(); throw new Error(err.message || 'GitHub fout'); }
+}
+
+async function askVault() {
+  if (!transcript.trim()) return;
+  if (!settings.anthropicKey || !settings.githubToken) { showToast('Vul eerst instellingen in'); toggleSettings(); return; }
+  showToast('Zoeken in vault...');
+  const box = document.getElementById('response-box');
+  box.style.display = 'block';
+  box.textContent = 'Even zoeken...';
+  try {
+    const { githubUser: user, githubRepo: repo, githubToken: token } = settings;
+    const r = await fetch(`https://api.github.com/repos/${user}/${repo}/git/trees/main?recursive=1`, { headers: { Authorization: `token ${token}` }});
+    const data = await r.json();
+    const files = data.tree ? data.tree.filter(f => f.path.endsWith('.md')).map(f => f.path).join('\n') : 'Geen bestanden';
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': settings.anthropicKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514', max_tokens: 1000,
+        messages: [{ role: 'user', content: `Dit zijn de bestanden in mijn Obsidian vault:\n${files}\n\nMijn vraag: "${transcript}"\n\nGeef een kort en duidelijk antwoord in het Nederlands. Als je een bestandspad weet, noem het dan.` }]
+      })
+    });
+    const d = await resp.json();
+    box.textContent = d.content[0].text;
+  } catch(e) { box.textContent = 'Fout: ' + e.message; }
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+loadSettings();
+</script>
+</body>
+</html>
