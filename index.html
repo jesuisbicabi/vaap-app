@@ -208,17 +208,36 @@ async function saveNote() {
       headers: { 'Content-Type': 'application/json', 'x-api-key': settings.anthropicKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6', max_tokens: 1000,
-        messages: [{ role: 'user', content: `Maak een nette Obsidian notitie van deze gesproken tekst. Gebruik Nederlandse taal. Voeg een passende titel toe als eerste regel (# Titel). Datum: ${dateStr}, Tijd: ${timeStr}. Gesproken tekst: "${transcript}". Geef alleen de markdown notitie terug, geen uitleg.` }]
+        messages: [{ role: "user", content: `Analyseer deze gesproken tekst en geef een JSON response met precies deze structuur (geen uitleg, alleen JSON):
+{
+  "map": "InMyMind",
+  "notitie": "# Titel\n\nInhoud"
+}
+
+Kies de map op basis van de inhoud:
+- "Work": werkgerelateerd, taken voor werk, collegas, werkprocedures
+- "InMyMind": persoonlijke gedachten, ideeen, herinneringen, gevoelens
+- "Inbox": onduidelijk of gemengd
+- "2026": jaar-specifieke plannen of doelen
+
+Datum: ${dateStr}, Tijd: ${timeStr}
+Gesproken tekst: "${transcript}"
+
+Geef ALLEEN de JSON terug, geen markdown backticks, geen uitleg.` }]
       })
     });
     const data = await resp.json();
     if (!data.content || !data.content[0]) { throw new Error('API fout: ' + JSON.stringify(data)); }
-    const noteContent = data.content[0].text;
+    const responseText = data.content[0].text.trim();
+    let parsed;
+    try { parsed = JSON.parse(responseText); } catch(e) { parsed = { map: selectedFolder, notitie: responseText }; }
+    const autoMap = ['Work','InMyMind','Inbox','2026'].includes(parsed.map) ? parsed.map : selectedFolder;
+    const noteContent = parsed.notitie || responseText;
     const titleMatch = noteContent.match(/^#\s+(.+)/m);
     const title = titleMatch ? titleMatch[1].trim().replace(/[\/\\?%*:|"<>]/g, '-') : `notitie-${dateStr}`;
-    const filename = `${selectedFolder}/${dateStr}-${title}.md`;
+    const filename = `${autoMap}/${dateStr}-${title}.md`;
     await saveToGitHub(filename, noteContent);
-    showToast('Opgeslagen in ' + selectedFolder + '!');
+    showToast('Opgeslagen in ' + autoMap + '!');
     const box = document.getElementById('response-box');
     box.style.display = 'block';
     box.textContent = 'Opgeslagen als:\n' + filename;
@@ -257,23 +276,4 @@ async function askVault() {
       headers: { 'Content-Type': 'application/json', 'x-api-key': settings.anthropicKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6', max_tokens: 1000,
-        messages: [{ role: 'user', content: `Dit zijn de bestanden in mijn Obsidian vault:\n${files}\n\nMijn vraag: "${transcript}"\n\nGeef een kort en duidelijk antwoord in het Nederlands. Als je een bestandspad weet, noem het dan.` }]
-      })
-    });
-    const d = await resp.json();
-    if (!d.content || !d.content[0]) { throw new Error('API fout: ' + JSON.stringify(d)); }
-    box.textContent = d.content[0].text;
-  } catch(e) { box.textContent = 'Fout: ' + e.message; }
-}
-
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2500);
-}
-
-loadSettings();
-</script>
-</body>
-</html>
+        messages: [{ role: 'user', content: `Dit zijn de bestanden in mijn Obsidian vault:\n${files}\n\nMijn vra
