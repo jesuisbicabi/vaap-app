@@ -298,4 +298,20 @@ async function askVault() {
       headers: { 'Content-Type': 'application/json', 'x-api-key': settings.anthropicKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
       body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1000, messages: [{ role: 'user', content: prompt }] })
     });
-    var
+    var d = await resp.json();
+    if (!d.content || !d.content[0]) throw new Error('API fout: ' + JSON.stringify(d));
+    box.textContent = d.content[0].text;
+  } catch(e) { box.textContent = 'Fout: ' + e.message; }
+}
+
+function showToast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(function(){ t.classList.remove('show'); }, 2500);
+}
+
+loadSettings();
+</script>
+</body>
+</html>
