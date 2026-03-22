@@ -209,6 +209,7 @@ async function saveNote() {
       })
     });
     const data = await resp.json();
+    if (!data.content || !data.content[0]) { throw new Error('API fout: ' + JSON.stringify(data)); }
     const noteContent = data.content[0].text;
     const titleMatch = noteContent.match(/^#\s+(.+)/m);
     const title = titleMatch ? titleMatch[1].trim().replace(/[\/\\?%*:|"<>]/g, '-') : `notitie-${dateStr}`;
@@ -257,6 +258,7 @@ async function askVault() {
       })
     });
     const d = await resp.json();
+    if (!d.content || !d.content[0]) { throw new Error('API fout: ' + JSON.stringify(d)); }
     box.textContent = d.content[0].text;
   } catch(e) { box.textContent = 'Fout: ' + e.message; }
 }
