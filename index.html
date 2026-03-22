@@ -21,7 +21,6 @@
   .save-settings-btn { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; background: #fff; color: #1a1a1a; font-size: 14px; cursor: pointer; }
   .mic-area { text-align: center; margin: 1.5rem 0; }
   .mic-btn { width: 88px; height: 88px; border-radius: 50%; border: 1.5px solid #ddd; background: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: all 0.2s; }
-  .mic-btn:hover { background: #f5f5f0; }
   .mic-btn.recording { border-color: #e24b4a; background: #fff5f5; animation: pulse 1s infinite; }
   .mic-btn svg { color: #555; }
   .mic-btn.recording svg { color: #e24b4a; }
@@ -31,7 +30,10 @@
   .transcript-box { background: #fff; border: 1px solid #e5e5e0; border-radius: 10px; padding: 14px; margin: 1rem 0; font-size: 15px; color: #1a1a1a; min-height: 64px; line-height: 1.6; display: none; }
   .action-area { display: none; }
   .folder-label { font-size: 13px; color: #888; margin-bottom: 8px; }
-  .action-row { display: flex; gap: 8px; margin-top: 0.5rem; }
+  .folder-select { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1rem; }
+  .folder-btn { padding: 6px 16px; border: 1px solid #ddd; border-radius: 20px; font-size: 13px; cursor: pointer; background: #fff; color: #888; transition: all 0.15s; }
+  .folder-btn.active { border-color: #1a1a1a; color: #1a1a1a; font-weight: 500; }
+  .action-row { display: flex; gap: 8px; }
   .action-btn { flex: 1; padding: 12px; border-radius: 10px; border: 1px solid #ddd; font-size: 14px; cursor: pointer; background: #fff; color: #1a1a1a; }
   .opslaan-btn { border-color: #1D9E75; color: #0F6E56; }
   .zoek-btn { border-color: #378ADD; color: #185FA5; }
@@ -84,6 +86,13 @@
   <div class="transcript-box" id="transcript"></div>
 
   <div class="action-area" id="action-area">
+    <p class="folder-label">Opslaan in:</p>
+    <div class="folder-select" id="folder-select">
+      <button class="folder-btn active" data-folder="Inbox" onclick="selectFolder(this)">Inbox</button>
+      <button class="folder-btn" data-folder="InMyMind" onclick="selectFolder(this)">InMyMind</button>
+      <button class="folder-btn" data-folder="Work" onclick="selectFolder(this)">Work</button>
+      <button class="folder-btn" data-folder="2026" onclick="selectFolder(this)">2026</button>
+    </div>
     <div class="action-row">
       <button class="action-btn opslaan-btn" onclick="saveNote()">Opslaan in vault</button>
       <button class="action-btn zoek-btn" onclick="askVault()">Zoek in vault</button>
@@ -99,6 +108,7 @@
 var recognition = null;
 var isRecording = false;
 var transcript = '';
+var selectedFolder = 'Inbox';
 var settings = {};
 
 function loadSettings() {
@@ -130,60 +140,80 @@ function toggleSettings() {
   document.getElementById('settings-panel').classList.toggle('open');
 }
 
+function selectFolder(btn) {
+  document.querySelectorAll('.folder-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  selectedFolder = btn.dataset.folder;
+}
+
+function highlightFolder(folderName) {
+  document.querySelectorAll('.folder-btn').forEach(function(b) {
+    b.classList.remove('active');
+    if (b.dataset.folder === folderName) b.classList.add('active');
+  });
+  selectedFolder = folderName;
+}
+
 function startRecording() {
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { showToast('Spraakherkenning niet beschikbaar'); return; }
   recognition = new SR();
   recognition.lang = 'nl-NL';
   recognition.continuous = true;
-  recognition.interimResults = true;
+  recognition.interimResults = false;
   isRecording = true;
   transcript = '';
   document.getElementById('mic-btn').classList.add('recording');
   document.getElementById('stop-btn').style.display = 'block';
   document.getElementById('status').textContent = 'Aan het luisteren...';
   document.getElementById('transcript').style.display = 'none';
+  document.getElementById('transcript').textContent = '';
   document.getElementById('action-area').style.display = 'none';
   document.getElementById('response-box').style.display = 'none';
 
   recognition.onresult = function(e) {
-    var final = '';
-    var interim = '';
     for (var i = e.resultIndex; i < e.results.length; i++) {
-      if (e.results[i].isFinal) final += e.results[i][0].transcript;
-      else interim += e.results[i][0].transcript;
+      if (e.results[i].isFinal) {
+        transcript += e.results[i][0].transcript + ' ';
+      }
     }
-    if (final) transcript += final;
     var t = document.getElementById('transcript');
     t.style.display = 'block';
-    t.textContent = transcript + interim;
+    t.textContent = transcript.trim();
   };
 
   recognition.onerror = function(e) {
-    if (e.error !== 'aborted') showToast('Fout: ' + e.error);
-    stopRecording();
+    if (e.error !== 'aborted' && e.error !== 'no-speech') showToast('Fout: ' + e.error);
   };
 
   recognition.onend = function() {
-    if (isRecording) recognition.start();
+    if (isRecording) {
+      try { recognition.start(); } catch(e) {}
+    }
   };
 
-  recognition.start();
+  try { recognition.start(); } catch(e) { showToast('Kan microfoon niet starten: ' + e.message); }
 }
 
 function stopRecording() {
   isRecording = false;
-  if (recognition) { recognition.onend = null; recognition.stop(); }
+  if (recognition) {
+    recognition.onend = null;
+    recognition.onerror = null;
+    try { recognition.stop(); } catch(e) {}
+  }
   document.getElementById('mic-btn').classList.remove('recording');
   document.getElementById('stop-btn').style.display = 'none';
   document.getElementById('status').textContent = 'Tik om in te spreken';
-  var t = document.getElementById('transcript');
-  if (transcript.trim()) {
-    t.style.display = 'block';
-    t.textContent = transcript;
-    document.getElementById('action-area').style.display = 'block';
-  } else if (t.textContent.trim()) {
-    transcript = t.textContent.trim();
+  var finalText = transcript.trim();
+  if (!finalText) {
+    var domText = document.getElementById('transcript').textContent.trim();
+    if (domText) finalText = domText;
+  }
+  transcript = finalText;
+  if (transcript) {
+    document.getElementById('transcript').style.display = 'block';
+    document.getElementById('transcript').textContent = transcript;
     document.getElementById('action-area').style.display = 'block';
   } else {
     showToast('Geen tekst ontvangen, probeer opnieuw');
@@ -198,7 +228,7 @@ async function saveNote() {
     var now = new Date();
     var dateStr = now.toISOString().slice(0,10);
     var timeStr = now.toTimeString().slice(0,5);
-    var prompt = 'Analyseer deze gesproken tekst en geef een JSON response met precies deze structuur (geen uitleg, alleen JSON):\n{"map": "InMyMind", "notitie": "# Titel\\n\\nInhoud"}\n\nKies de map op basis van de inhoud:\n- "Work": werkgerelateerd, taken voor werk, collegas, werkprocedures\n- "InMyMind": persoonlijke gedachten, ideeen, herinneringen, gevoelens\n- "Inbox": onduidelijk of gemengd\n- "2026": jaar-specifieke plannen of doelen\n\nDatum: ' + dateStr + ', Tijd: ' + timeStr + '\nGesproken tekst: "' + transcript + '"\n\nGeef ALLEEN de JSON terug, geen markdown backticks, geen uitleg.';
+    var prompt = 'Analyseer deze gesproken tekst en geef een JSON response met precies deze structuur (geen uitleg, alleen JSON):\n{"map": "Inbox", "notitie": "# Titel\\n\\nInhoud"}\n\nKies de map op basis van de inhoud:\n- "Work": werkgerelateerd, taken voor werk, collegas, werkprocedures\n- "InMyMind": persoonlijke gedachten, ideeen, herinneringen, gevoelens\n- "Inbox": onduidelijk of gemengd\n- "2026": jaar-specifieke plannen of doelen\n\nDatum: ' + dateStr + ', Tijd: ' + timeStr + '\nGesproken tekst: "' + transcript + '"\n\nGeef ALLEEN de JSON terug, geen markdown backticks, geen uitleg.';
 
     var resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -210,8 +240,9 @@ async function saveNote() {
 
     var responseText = data.content[0].text.trim();
     var parsed;
-    try { parsed = JSON.parse(responseText); } catch(e) { parsed = { map: 'Inbox', notitie: responseText }; }
-    var autoMap = ['Work','InMyMind','Inbox','2026'].includes(parsed.map) ? parsed.map : 'Inbox';
+    try { parsed = JSON.parse(responseText); } catch(e) { parsed = { map: selectedFolder, notitie: responseText }; }
+    var autoMap = ['Work','InMyMind','Inbox','2026'].includes(parsed.map) ? parsed.map : selectedFolder;
+    highlightFolder(autoMap);
     var noteContent = parsed.notitie || responseText;
     var titleMatch = noteContent.match(/^#\s+(.+)/m);
     var title = titleMatch ? titleMatch[1].trim().replace(/[\/\\?%*:|"<>]/g, '-') : 'notitie-' + dateStr;
@@ -238,7 +269,7 @@ async function saveToGitHub(path, content) {
     var check = await fetch(url, { headers: { Authorization: 'token ' + token }});
     if (check.ok) { var d = await check.json(); sha = d.sha; }
   } catch(e) {}
-  var body = { message: 'VAAP: ' + path, content: encoded };
+  var body = { message: 'AI-agent: ' + path, content: encoded };
   if (sha) body.sha = sha;
   var r = await fetch(url, { method: 'PUT', headers: { Authorization: 'token ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!r.ok) { var err = await r.json(); throw new Error(err.message || 'GitHub fout'); }
