@@ -136,7 +136,7 @@ function startRecording() {
   recognition = new SR();
   recognition.lang = 'nl-NL';
   recognition.continuous = true;
-  recognition.interimResults = false;
+  recognition.interimResults = true;
   isRecording = true;
   transcript = '';
   document.getElementById('mic-btn').classList.add('recording');
@@ -148,13 +148,15 @@ function startRecording() {
 
   recognition.onresult = function(e) {
     var final = '';
+    var interim = '';
     for (var i = e.resultIndex; i < e.results.length; i++) {
       if (e.results[i].isFinal) final += e.results[i][0].transcript;
+      else interim += e.results[i][0].transcript;
     }
     if (final) transcript += final;
     var t = document.getElementById('transcript');
     t.style.display = 'block';
-    t.textContent = transcript;
+    t.textContent = transcript + interim;
   };
 
   recognition.onerror = function(e) {
@@ -175,7 +177,17 @@ function stopRecording() {
   document.getElementById('mic-btn').classList.remove('recording');
   document.getElementById('stop-btn').style.display = 'none';
   document.getElementById('status').textContent = 'Tik om in te spreken';
-  if (transcript.trim()) document.getElementById('action-area').style.display = 'block';
+  var t = document.getElementById('transcript');
+  if (transcript.trim()) {
+    t.style.display = 'block';
+    t.textContent = transcript;
+    document.getElementById('action-area').style.display = 'block';
+  } else if (t.textContent.trim()) {
+    transcript = t.textContent.trim();
+    document.getElementById('action-area').style.display = 'block';
+  } else {
+    showToast('Geen tekst ontvangen, probeer opnieuw');
+  }
 }
 
 async function saveNote() {
@@ -253,19 +265,4 @@ async function askVault() {
       body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1000, messages: [{ role: 'user', content: prompt }] })
     });
     var d = await resp.json();
-    if (!d.content || !d.content[0]) throw new Error('API fout: ' + JSON.stringify(d));
-    box.textContent = d.content[0].text;
-  } catch(e) { box.textContent = 'Fout: ' + e.message; }
-}
-
-function showToast(msg) {
-  var t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(function(){ t.classList.remove('show'); }, 2500);
-}
-
-loadSettings();
-</script>
-</body>
-</html>
+   
