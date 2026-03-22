@@ -171,18 +171,19 @@ function startRecording() {
   document.getElementById('action-area').style.display = 'none';
   document.getElementById('response-box').style.display = 'none';
 
+  var lastInterim = '';
   recognition.onresult = function(e) {
-    var interim = '';
+    lastInterim = '';
     for (var i = e.resultIndex; i < e.results.length; i++) {
       if (e.results[i].isFinal) {
         transcript += e.results[i][0].transcript + ' ';
       } else {
-        interim += e.results[i][0].transcript;
+        lastInterim += e.results[i][0].transcript;
       }
     }
     var t = document.getElementById('transcript');
     t.style.display = 'block';
-    t.textContent = transcript.trim() + (interim ? ' ' + interim : '');
+    t.textContent = transcript.trim() + (lastInterim ? ' ' + lastInterim : '');
   };
 
   recognition.onerror = function(e) {
@@ -230,6 +231,7 @@ async function saveNote() {
   try {
     var now = new Date();
     var dateStr = now.toISOString().slice(0,10);
+    var dateDisplay = dateStr.split('-').reverse().join('-');
     var timeStr = now.toTimeString().slice(0,5);
     var prompt = 'Analyseer deze gesproken tekst en geef een JSON response met precies deze structuur (geen uitleg, alleen JSON):\n{"map": "Inbox", "notitie": "# Titel\\n\\nInhoud"}\n\nKies de map op basis van de inhoud:\n- "Work": werkgerelateerd, taken voor werk, collegas, werkprocedures\n- "InMyMind": persoonlijke gedachten, ideeen, herinneringen, gevoelens\n- "Inbox": onduidelijk of gemengd\n- "2026": jaar-specifieke plannen of doelen\n\nMaak de notitie rijk opgemaakt in Obsidian markdown. Voeg altijd toe:\n- Datum en Tijd bovenaan\n- Relevante kopjes op basis van inhoud zoals ## Actie, ## Voorbereiding, ## Notitie aan mezelf, ## Probleem, ## Status, ## Idee etc.\n- Gebruik checkboxes (- [ ]) voor actiepunten\n- Gebruik **bold** voor belangrijke woorden\n\nDatum: ' + dateStr + ', Tijd: ' + timeStr + '\nGesproken tekst: "' + transcript + '"\n\nGeef ALLEEN de JSON terug, geen markdown backticks, geen uitleg.';
 
