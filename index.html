@@ -37,6 +37,9 @@
   .action-btn { flex: 1; padding: 12px; border-radius: 10px; border: 1px solid #ddd; font-size: 14px; cursor: pointer; background: #fff; color: #1a1a1a; }
   .opslaan-btn { border-color: #1D9E75; color: #0F6E56; }
   .zoek-btn { border-color: #378ADD; color: #185FA5; }
+  .dagboek-sectie { margin-top: 1.5rem; border-top: 1px solid #e5e5e0; padding-top: 1rem; }
+  .dagdeel-btn { padding: 6px 16px; border: 1px solid #ddd; border-radius: 20px; font-size: 13px; cursor: pointer; background: #fff; color: #888; transition: all 0.15s; }
+  .dagdeel-btn:hover { border-color: #1a1a1a; color: #1a1a1a; }
   .response-box { background: #fff; border: 1px solid #e5e5e0; border-radius: 10px; padding: 14px; margin-top: 1rem; font-size: 14px; color: #1a1a1a; line-height: 1.7; display: none; white-space: pre-wrap; }
   .toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); background: #1a1a1a; color: #fff; border-radius: 8px; padding: 10px 20px; font-size: 14px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 99; }
   .toast.show { opacity: 1; }
@@ -47,7 +50,7 @@
   <h1>AI-agent</h1>
   <p class="subtitle">Spreek in, sla op of zoek in je vault</p>
 
-  <a class="settings-toggle" onclick="toggleSettings()">⚙ Instellingen</a>
+  <a class="settings-toggle" onclick="toggleSettings()">Instellingen</a>
 
   <div class="settings-panel" id="settings-panel">
     <h2>Instellingen</h2>
@@ -86,7 +89,7 @@
   <div class="transcript-box" id="transcript"></div>
 
   <div class="action-area" id="action-area">
-    <p class="folder-label">Opslaan in:</p>
+    <p class="folder-label">Opslaan als nieuwe notitie in:</p>
     <div class="folder-select" id="folder-select">
       <button class="folder-btn active" data-folder="Inbox" onclick="selectFolder(this)">Inbox</button>
       <button class="folder-btn" data-folder="InMyMind" onclick="selectFolder(this)">InMyMind</button>
@@ -96,6 +99,15 @@
     <div class="action-row">
       <button class="action-btn opslaan-btn" onclick="saveNote()">Opslaan in vault</button>
       <button class="action-btn zoek-btn" onclick="askVault()">Zoek in vault</button>
+    </div>
+
+    <div class="dagboek-sectie">
+      <p class="folder-label">Of toevoegen aan dagboek van vandaag:</p>
+      <div class="folder-select">
+        <button class="dagdeel-btn" onclick="addToDagboek('Ochtend')">Ochtend</button>
+        <button class="dagdeel-btn" onclick="addToDagboek('Middag')">Middag</button>
+        <button class="dagdeel-btn" onclick="addToDagboek('Dagafsluiting')">Dagafsluiting</button>
+      </div>
     </div>
   </div>
 
@@ -263,7 +275,8 @@ async function saveToGitHub(path, content) {
   var user = settings.githubUser;
   var repo = settings.githubRepo;
   var token = settings.githubToken;
-  var url = 'https://api.github.com/repos/' + user + '/' + repo + '/contents/' + path;
+  var encodedPath = path.split('/').map(function(p){ return encodeURIComponent(p); }).join('/');
+  var url = 'https://api.github.com/repos/' + user + '/' + repo + '/contents/' + encodedPath;
   var encoded = btoa(unescape(encodeURIComponent(content)));
   var sha = null;
   try {
@@ -274,6 +287,58 @@ async function saveToGitHub(path, content) {
   if (sha) body.sha = sha;
   var r = await fetch(url, { method: 'PUT', headers: { Authorization: 'token ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!r.ok) { var err = await r.json(); throw new Error(err.message || 'GitHub fout'); }
+}
+
+async function addToDagboek(dagdeel) {
+  if (!transcript.trim()) return;
+  if (!settings.githubToken) { showToast('Vul eerst instellingen in'); toggleSettings(); return; }
+  showToast('Toevoegen aan dagboek...');
+  try {
+    var now = new Date();
+    var maanden = ['Januari','Februari','Maart','April','Mei','Juni','Juli','Augustus','September','Oktober','November','December'];
+    var maandNaam = maanden[now.getMonth()];
+    var maandNum = String(now.getMonth() + 1).padStart(2, '0');
+    var jaar = now.getFullYear();
+    var timeStr = now.toTimeString().slice(0,5);
+
+    var user = settings.githubUser;
+    var repo = settings.githubRepo;
+    var token = settings.githubToken;
+    var dagboekPath = 'InMyMind/01 - Dagelijks leven \uD83C\uDFE0 daily notes, weekly reviews, to-do\'s/vitality monitor/' + maandNum + '-' + jaar + ' ' + maandNaam + '.md';
+    var encodedPath = dagboekPath.split('/').map(function(p){ return encodeURIComponent(p); }).join('/');
+    var url = 'https://api.github.com/repos/' + user + '/' + repo + '/contents/' + encodedPath;
+
+    var checkResp = await fetch(url, { headers: { Authorization: 'token ' + token }});
+    if (!checkResp.ok) throw new Error('Dagboekbestand niet gevonden');
+    var fileData = await checkResp.json();
+    var sha = fileData.sha;
+    var currentContent = decodeURIComponent(escape(atob(fileData.content.replace(/\n/g, ''))));
+
+    var tekstToAdd = '\n> **' + timeStr + '** — ' + transcript.trim() + '\n';
+
+    var sectionIndex = currentContent.indexOf(dagdeel);
+    var newContent;
+    if (sectionIndex !== -1) {
+      var nextSection = currentContent.indexOf('\n---', sectionIndex + dagdeel.length);
+      var insertAt = nextSection !== -1 ? nextSection : currentContent.length;
+      newContent = currentContent.slice(0, insertAt) + tekstToAdd + currentContent.slice(insertAt);
+    } else {
+      newContent = currentContent + '\n\n**' + dagdeel + '**\n' + tekstToAdd;
+    }
+
+    var encoded = btoa(unescape(encodeURIComponent(newContent)));
+    var body = { message: 'AI-agent: dagboek ' + dagdeel, content: encoded, sha: sha };
+    var r = await fetch(url, { method: 'PUT', headers: { Authorization: 'token ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) { var err = await r.json(); throw new Error(err.message || 'GitHub fout'); }
+
+    showToast('Toegevoegd aan ' + dagdeel + '!');
+    var box = document.getElementById('response-box');
+    box.style.display = 'block';
+    box.textContent = 'Toegevoegd aan dagboek - ' + dagdeel + ' (' + timeStr + ')';
+    transcript = '';
+    document.getElementById('transcript').style.display = 'none';
+    document.getElementById('action-area').style.display = 'none';
+  } catch(e) { showToast('Fout: ' + e.message); }
 }
 
 async function askVault() {
