@@ -33,10 +33,12 @@
   .folder-select { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1rem; }
   .folder-btn { padding: 6px 16px; border: 1px solid #ddd; border-radius: 20px; font-size: 13px; cursor: pointer; background: #fff; color: #888; transition: all 0.15s; }
   .folder-btn.active { border-color: #1a1a1a; color: #1a1a1a; font-weight: 500; }
-  .action-row { display: flex; gap: 8px; }
-  .action-btn { flex: 1; padding: 12px; border-radius: 10px; border: 1px solid #ddd; font-size: 14px; cursor: pointer; background: #fff; color: #1a1a1a; }
+  .action-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .action-btn { flex: 1; min-width: 120px; padding: 12px; border-radius: 10px; border: 1px solid #ddd; font-size: 14px; cursor: pointer; background: #fff; color: #1a1a1a; }
   .opslaan-btn { border-color: #1D9E75; color: #0F6E56; }
   .zoek-btn { border-color: #378ADD; color: #185FA5; }
+  .vitality-btn { border-color: #9B59B6; color: #6C3483; background: #fdf6ff; font-weight: 500; }
+  .vitality-btn:hover { background: #f5e6ff; }
   .response-box { background: #fff; border: 1px solid #e5e5e0; border-radius: 10px; padding: 14px; margin-top: 1rem; font-size: 14px; color: #1a1a1a; line-height: 1.7; display: none; white-space: pre-wrap; }
   .toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); background: #1a1a1a; color: #fff; border-radius: 8px; padding: 10px 20px; font-size: 14px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 99; }
   .toast.show { opacity: 1; }
@@ -96,6 +98,7 @@
     <div class="action-row">
       <button class="action-btn opslaan-btn" onclick="saveNote()">Opslaan in vault</button>
       <button class="action-btn zoek-btn" onclick="askVault()">Zoek in vault</button>
+      <button class="action-btn vitality-btn" onclick="saveVitalityCheckin()">💜 Vitality check-in</button>
     </div>
   </div>
 
@@ -110,6 +113,31 @@ var isRecording = false;
 var transcript = '';
 var selectedFolder = 'Inbox';
 var settings = {};
+
+// Pad naar het maandbestand in de vault
+var VITALITY_BASE = "InMyMind/01 - Dagelijks leven \uD83C\uDFE0 daily notes, weekly reviews, to-do's/vitality monitor";
+
+function getVitalityFilePath() {
+  var now = new Date();
+  var maanden = ['Januari','Februari','Maart','April','Mei','Juni','Juli','Augustus','September','Oktober','November','December'];
+  var mm = String(now.getMonth() + 1).padStart(2, '0');
+  var yyyy = now.getFullYear();
+  var maandNaam = maanden[now.getMonth()];
+  return VITALITY_BASE + '/' + mm + '-' + yyyy + ' ' + maandNaam + '.md';
+}
+
+function getTodayHeading() {
+  var now = new Date();
+  var dd = String(now.getDate()).padStart(2, '0');
+  var mm = String(now.getMonth() + 1).padStart(2, '0');
+  var yyyy = now.getFullYear();
+  return '## ' + dd + '-' + mm + '-' + yyyy;
+}
+
+function getTimeStr() {
+  var now = new Date();
+  return now.toTimeString().slice(0,5);
+}
 
 function loadSettings() {
   try {
@@ -220,6 +248,145 @@ function stopRecording() {
   }
 }
 
+// ─── VITALITY CHECK-IN ──────────────────────────────────────────────────────
+
+async function saveVitalityCheckin() {
+  if (!transcript.trim()) return;
+  if (!settings.anthropicKey || !settings.githubToken) { showToast('Vul eerst instellingen in'); toggleSettings(); return; }
+
+  showToast('Check-in verwerken...');
+  var box = document.getElementById('response-box');
+  box.style.display = 'block';
+  box.textContent = 'Even geduld...';
+
+  try {
+    var timeStr = getTimeStr();
+    var filePath = getVitalityFilePath();
+    var todayHeading = getTodayHeading();
+
+    // Stap 1: haal het huidige maandbestand op
+    var fileContent = '';
+    var sha = null;
+    var user = settings.githubUser;
+    var repo = settings.githubRepo;
+    var token = settings.githubToken;
+    var encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
+    var url = 'https://api.github.com/repos/' + user + '/' + repo + '/contents/' + encodedPath;
+
+    var check = await fetch(url, { headers: { Authorization: 'token ' + token } });
+    if (check.ok) {
+      var fileData = await check.json();
+      sha = fileData.sha;
+      fileContent = decodeURIComponent(escape(atob(fileData.content.replace(/\n/g, ''))));
+    } else if (check.status === 404) {
+      showToast('Maandbestand niet gevonden: ' + filePath);
+      box.textContent = 'Fout: bestand niet gevonden:\n' + filePath;
+      return;
+    } else {
+      throw new Error('GitHub fout: ' + check.status);
+    }
+
+    // Stap 2: laat Claude de check-in formatteren
+    var prompt = 'Verwerk deze gesproken check-in naar één korte markdown-regel voor een vitality logboek.\n\nFormaat: - HH:MM [emoji] [korte beschrijving]\n\nEmoji keuze:\n💊 voor medicijnen of supplementen\n😶 voor stemming (voeg score toe als genoemd, bijv. 😶 3/5)\n⚡ voor energie (voeg score toe als genoemd)\n🤕 voor lichamelijke klachten zoals migraine, pijn, misselijkheid\n📝 voor activiteit of bezigheid\n\nMeerdere onderwerpen = meerdere regels.\nHoud het beknopt maar informatief. Geen uitleg, alleen de regel(s).\n\nTijd: ' + timeStr + '\nGesproken tekst: "' + transcript + '"\n\nGeef ALLEEN de markdown-regel(s) terug, niets anders.';
+
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': settings.anthropicKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 300, messages: [{ role: 'user', content: prompt }] })
+    });
+
+    var apiData = await resp.json();
+    if (!apiData.content || !apiData.content[0]) throw new Error('API fout: ' + JSON.stringify(apiData));
+    var newLines = apiData.content[0].text.trim();
+
+    // Stap 3: voeg check-in in op de juiste plek in het bestand
+    var updatedContent = insertCheckin(fileContent, todayHeading, newLines);
+
+    // Stap 4: schrijf terug naar GitHub
+    var encoded = btoa(unescape(encodeURIComponent(updatedContent)));
+    var body = { message: 'Vitality check-in: ' + timeStr, content: encoded, sha: sha };
+    var r = await fetch(url, {
+      method: 'PUT',
+      headers: { Authorization: 'token ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) { var err = await r.json(); throw new Error(err.message || 'GitHub schrijffout'); }
+
+    showToast('Check-in opgeslagen! 💜');
+    box.textContent = 'Toegevoegd aan ' + todayHeading + ':\n\n' + newLines;
+    transcript = '';
+    document.getElementById('transcript').style.display = 'none';
+    document.getElementById('action-area').style.display = 'none';
+
+  } catch(e) {
+    showToast('Fout: ' + e.message);
+    box.textContent = 'Fout: ' + e.message;
+  }
+}
+
+function insertCheckin(fileContent, todayHeading, newLines) {
+  var checkinHeader = '**📋 Check-ins**';
+
+  // Zoek de dag-sectie van vandaag
+  var dayIndex = fileContent.indexOf(todayHeading);
+
+  if (dayIndex === -1) {
+    // Dag bestaat nog niet — voeg helemaal onderaan toe
+    var dayBlock = '\n\n' + todayHeading + '\n\n' + checkinHeader + '\n' + newLines;
+    return fileContent.trimEnd() + dayBlock;
+  }
+
+  // Zoek of er al een check-ins blok is binnen deze dag
+  // Zoek het einde van de dag-sectie (volgende ## heading of einde bestand)
+  var afterDay = fileContent.indexOf('\n## ', dayIndex + todayHeading.length);
+  var daySection = afterDay === -1 ? fileContent.slice(dayIndex) : fileContent.slice(dayIndex, afterDay);
+
+  var checkinIndex = daySection.indexOf(checkinHeader);
+
+  if (checkinIndex !== -1) {
+    // Check-ins blok bestaat al — voeg regel(s) toe na het blok
+    // Zoek het einde van het check-ins blok (volgende ### of ## of einde sectie)
+    var afterCheckin = daySection.indexOf('\n###', checkinIndex);
+    var afterCheckin2 = daySection.indexOf('\n---', checkinIndex);
+    var insertAt;
+    if (afterCheckin !== -1 && (afterCheckin2 === -1 || afterCheckin < afterCheckin2)) {
+      insertAt = checkinIndex + afterCheckin;
+    } else if (afterCheckin2 !== -1) {
+      insertAt = checkinIndex + afterCheckin2;
+    } else {
+      insertAt = daySection.length;
+    }
+
+    var updatedDaySection = daySection.slice(0, insertAt) + '\n' + newLines + daySection.slice(insertAt);
+    if (afterDay === -1) {
+      return fileContent.slice(0, dayIndex) + updatedDaySection;
+    } else {
+      return fileContent.slice(0, dayIndex) + updatedDaySection + fileContent.slice(afterDay);
+    }
+
+  } else {
+    // Geen check-ins blok — voeg het toe aan het einde van de dag-sectie, voor de --- of volgende ##
+    var insertPos = daySection.search(/\n---\s*\n(?![\s\S]*\n---)/);
+    if (insertPos === -1) insertPos = daySection.length;
+
+    var checkinBlock = '\n\n' + checkinHeader + '\n' + newLines;
+    var updatedDaySection2 = daySection.slice(0, insertPos) + checkinBlock + daySection.slice(insertPos);
+
+    if (afterDay === -1) {
+      return fileContent.slice(0, dayIndex) + updatedDaySection2;
+    } else {
+      return fileContent.slice(0, dayIndex) + updatedDaySection2 + fileContent.slice(afterDay);
+    }
+  }
+}
+
+// ─── BESTAANDE FUNCTIES ──────────────────────────────────────────────────────
+
 async function saveNote() {
   if (!transcript.trim()) return;
   if (!settings.anthropicKey || !settings.githubToken) { showToast('Vul eerst instellingen in'); toggleSettings(); return; }
@@ -263,7 +430,8 @@ async function saveToGitHub(path, content) {
   var user = settings.githubUser;
   var repo = settings.githubRepo;
   var token = settings.githubToken;
-  var url = 'https://api.github.com/repos/' + user + '/' + repo + '/contents/' + path;
+  var encodedPath = path.split('/').map(encodeURIComponent).join('/');
+  var url = 'https://api.github.com/repos/' + user + '/' + repo + '/contents/' + encodedPath;
   var encoded = btoa(unescape(encodeURIComponent(content)));
   var sha = null;
   try {
