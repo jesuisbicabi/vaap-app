@@ -128,10 +128,20 @@ function getVitalityFilePath() {
 
 function getTodayHeading() {
   var now = new Date();
+  var dagen = ['zondag','maandag','dinsdag','woensdag','donderdag','vrijdag','zaterdag'];
   var dd = String(now.getDate()).padStart(2, '0');
   var mm = String(now.getMonth() + 1).padStart(2, '0');
   var yyyy = now.getFullYear();
-  return '## ' + dd + '-' + mm + '-' + yyyy;
+  var dagNaam = dagen[now.getDay()];
+  return '## ' + dd + '-' + mm + '-' + yyyy + ' ' + dagNaam;
+}
+
+function getDailyLink() {
+  var now = new Date();
+  var dd = String(now.getDate()).padStart(2, '0');
+  var mm = String(now.getMonth() + 1).padStart(2, '0');
+  var yyyy = now.getFullYear();
+  return '<small>[[' + yyyy + '-' + mm + '-' + dd + ']]</small>';
 }
 
 function getTimeStr() {
@@ -263,8 +273,7 @@ async function saveVitalityCheckin() {
     var timeStr = getTimeStr();
     var filePath = getVitalityFilePath();
     var todayHeading = getTodayHeading();
-
-
+    var dailyLink = getDailyLink();
 
     var user = settings.githubUser;
     var repo = settings.githubRepo;
@@ -307,7 +316,7 @@ async function saveVitalityCheckin() {
     }
 
     // Stap 3: voeg check-in in op de juiste plek in het bestand
-    var updatedContent = insertCheckin(fileContent, todayHeading, newLines);
+    var updatedContent = insertCheckin(fileContent, todayHeading, dailyLink, newLines);
 
     // Stap 4: schrijf terug naar GitHub
     var encoded = btoa(unescape(encodeURIComponent(updatedContent)));
@@ -331,19 +340,37 @@ async function saveVitalityCheckin() {
   }
 }
 
-function insertCheckin(fileContent, todayHeading, newLines) {
+function insertCheckin(fileContent, todayHeading, dailyLink, newLines) {
   var checkinHeader = '**📋 Check-ins**';
 
   // Zoek de dag-sectie van vandaag
   var dayIndex = fileContent.indexOf(todayHeading);
 
   if (dayIndex === -1) {
-    // Dag bestaat nog niet — voeg helemaal onderaan toe
-    var dayBlock = '\n\n' + todayHeading + '\n\n' + checkinHeader + '\n' + newLines;
-    return fileContent.trimEnd() + dayBlock;
+    // Dag bestaat nog niet — voeg BOVENAAN toe (na eventuele frontmatter of eerste regel)
+    var headingWithLink = todayHeading + ' ' + dailyLink;
+    var dayBlock = headingWithLink + '\n\n' + checkinHeader + '\n' + newLines + '\n\n';
+
+    // Zoek de eerste ## heading om vóór in te voegen
+    var firstHeading = fileContent.search(/^## /m);
+    if (firstHeading === -1) {
+      // Geen headings — plak bovenaan
+      return dayBlock + fileContent.trimStart();
+    } else {
+      return fileContent.slice(0, firstHeading) + dayBlock + fileContent.slice(firstHeading);
+    }
   }
 
-  // Zoek of er al een check-ins blok is binnen deze dag
+  // Dag bestaat al — check of de dailyLink al aanwezig is, zo niet voeg toe
+  var dayLineEnd = fileContent.indexOf('\n', dayIndex);
+  var dayLine = fileContent.slice(dayIndex, dayLineEnd);
+  if (dayLine.indexOf('[[') === -1) {
+    // Link nog niet aanwezig — voeg toe aan de heading regel
+    fileContent = fileContent.slice(0, dayLineEnd) + ' ' + dailyLink + fileContent.slice(dayLineEnd);
+    // Herbereken dayIndex (niet veranderd) en dayLineEnd
+    dayLineEnd = fileContent.indexOf('\n', dayIndex);
+  }
+
   // Zoek het einde van de dag-sectie (volgende ## heading of einde bestand)
   var afterDay = fileContent.indexOf('\n## ', dayIndex + todayHeading.length);
   var daySection = afterDay === -1 ? fileContent.slice(dayIndex) : fileContent.slice(dayIndex, afterDay);
@@ -352,7 +379,6 @@ function insertCheckin(fileContent, todayHeading, newLines) {
 
   if (checkinIndex !== -1) {
     // Check-ins blok bestaat al — voeg regel(s) toe na het blok
-    // Zoek het einde van het check-ins blok (volgende ### of ## of einde sectie)
     var afterCheckin = daySection.indexOf('\n###', checkinIndex);
     var afterCheckin2 = daySection.indexOf('\n---', checkinIndex);
     var insertAt;
