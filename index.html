@@ -90,10 +90,8 @@
   <div class="action-area" id="action-area">
     <p class="folder-label">Opslaan in:</p>
     <div class="folder-select" id="folder-select">
-      <button class="folder-btn active" data-folder="Inbox" onclick="selectFolder(this)">Inbox</button>
-      <button class="folder-btn" data-folder="InMyMind" onclick="selectFolder(this)">InMyMind</button>
+      <button class="folder-btn active" data-folder="InMyMind" onclick="selectFolder(this)">InMyMind</button>
       <button class="folder-btn" data-folder="Work" onclick="selectFolder(this)">Work</button>
-      <button class="folder-btn" data-folder="2026" onclick="selectFolder(this)">2026</button>
     </div>
     <div class="action-row">
       <button class="action-btn opslaan-btn" onclick="saveNote()">Opslaan in vault</button>
@@ -111,7 +109,7 @@
 var recognition = null;
 var isRecording = false;
 var transcript = '';
-var selectedFolder = 'Inbox';
+var selectedFolder = 'InMyMind';
 var settings = {};
 
 // Pad naar het maandbestand in de vault
@@ -141,7 +139,7 @@ function getDailyLink() {
   var dd = String(now.getDate()).padStart(2, '0');
   var mm = String(now.getMonth() + 1).padStart(2, '0');
   var yyyy = now.getFullYear();
-  return '<small>[[' + yyyy + '-' + mm + '-' + dd + ']]</small>';
+  return '<span style="font-size:9px">[[' + yyyy + '-' + mm + '-' + dd + ']]</span>';
 }
 
 function getTimeStr() {
@@ -282,7 +280,7 @@ async function saveVitalityCheckin() {
     var url = 'https://api.github.com/repos/' + user + '/' + repo + '/contents/' + encodedPath;
 
     // Stap 1: laat Claude de check-in formatteren
-    var prompt = 'Verwerk deze gesproken check-in naar één korte markdown-regel voor een vitality logboek.\n\nFormaat: - HH:MM [emoji] [korte beschrijving]\n\nEmoji keuze:\n💊 voor medicijnen of supplementen\n😶 voor stemming (voeg score toe als genoemd, bijv. 😶 3/5)\n⚡ voor energie (voeg score toe als genoemd)\n🤕 voor lichamelijke klachten zoals migraine, pijn, misselijkheid\n📝 voor activiteit of bezigheid\n\nMeerdere onderwerpen = meerdere regels.\nHoud het beknopt maar informatief. Geen uitleg, alleen de regel(s).\n\nTijd: ' + timeStr + '\nGesproken tekst: "' + transcript + '"\n\nGeef ALLEEN de markdown-regel(s) terug, niets anders.';
+    var prompt = 'Verwerk deze gesproken check-in naar één of meerdere korte markdown-regels voor een vitality logboek.\n\nFormaat: - HH:MM [emoji] [korte beschrijving]\n\nGebruik de onderstaande emoji automatisch als het bijbehorende trefwoord voorkomt in de gesproken tekst:\n💨 migraine weg / pillen gewerkt\n🌄 opgestaan / uit bed\n🛏️ naar bed / slapen gaan\n☕ espresso / koffie\n🧠 kramp in hoofd / hersens\n💅 nagelbijten / vingers kapotmaken\n😶 gemoedstoestand / hoe ik me voel / cijfer stemming (voeg score toe als genoemd, bijv. 😶 3/5)\n⚡ fysieke toestand / energie / cijfer energie (voeg score toe als genoemd)\n💤 wakker liggen / niet kunnen slapen\n🍴 gegeten\n🍽️ samen met Joa gegeten\n🥣 yoghurt\n🥓 chips / hartige snack\n👩‍🍳 koken / bakken\n🫃 honger / hongergevoel\n🤢 misselijk\n💻 thuis werken / laptop / pc\n🧹 schoonmaken / opruimen\n🦶 Feet-Up\n📳 telefoon in bed\n😵‍💫 duizelig\n🛋️ op de bank\n🧘 yoga\n👩‍🍼 Joa\n👵 mama / moeder / oma\n🚶‍♀️ wandelen\n🏠 naar huis / ben thuis / wil naar huis\n🚲 fietsen\n🗯️ berichtje ontvangen / WhatsApp\n🙏 dankbaar\n📸 fotograferen / studio\n🦵 fysio\n\nAls geen enkel trefwoord matcht, gebruik dan:\n💊 voor medicijnen of supplementen\n🤕 voor lichamelijke klachten\n📝 voor activiteit of bezigheid\n\nMeerdere onderwerpen = meerdere regels.\nHoud het beknopt maar informatief. Geen uitleg, alleen de regel(s).\n\nTijd: ' + timeStr + '\nGesproken tekst: "' + transcript + '"\n\nGeef ALLEEN de markdown-regel(s) terug, niets anders.';
 
     var resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -422,9 +420,21 @@ async function saveNote() {
   try {
     var now = new Date();
     var dateStr = now.toISOString().slice(0,10);
-    var dateDisplay = dateStr.split('-').reverse().join('-');
+    var dd = dateStr.slice(8,10);
+    var mm = dateStr.slice(5,7);
+    var yyyy = dateStr.slice(0,4);
+    var dateDisplay = dd + '-' + mm + '-' + yyyy;
     var timeStr = now.toTimeString().slice(0,5);
-    var prompt = 'Analyseer deze gesproken tekst en geef een JSON response met precies deze structuur (geen uitleg, alleen JSON):\n{"map": "Inbox", "notitie": "# Titel\\n\\nInhoud"}\n\nKies de map op basis van de inhoud:\n- "Work": werkgerelateerd, taken voor werk, collegas, werkprocedures\n- "InMyMind": persoonlijke gedachten, ideeen, herinneringen, gevoelens\n- "Inbox": onduidelijk of gemengd\n- "2026": jaar-specifieke plannen of doelen\n\nMaak de notitie rijk opgemaakt in Obsidian markdown. Voeg altijd toe:\n- Datum en Tijd bovenaan\n- Relevante kopjes op basis van inhoud zoals ## Actie, ## Voorbereiding, ## Notitie aan mezelf, ## Probleem, ## Status, ## Idee etc.\n- Gebruik checkboxes (- [ ]) voor actiepunten\n- Gebruik **bold** voor belangrijke woorden\n\nDatum: ' + dateDisplay + ', Tijd: ' + timeStr + '\nGesproken tekst: "' + transcript + '"\n\nGeef ALLEEN de JSON terug, geen markdown backticks, geen uitleg.';
+    var dagen = ['zondag','maandag','dinsdag','woensdag','donderdag','vrijdag','zaterdag'];
+    var dagNaam = dagen[now.getDay()];
+    var maanden = ['Januari','Februari','Maart','April','Mei','Juni','Juli','Augustus','September','Oktober','November','December'];
+    var maandNaam = maanden[now.getMonth()];
+    var vitalityLink = '<span style="font-size:9px">[[' + mm + '-' + yyyy + ' ' + maandNaam + ']]</span>';
+
+    var NOTE_BASE = "InMyMind/01 - Dagelijks leven \uD83C\uDFE0 daily notes, weekly reviews, to-do's/01 daily";
+    var filename = NOTE_BASE + '/' + dateStr + '.md';
+
+    var prompt = 'Analyseer deze gesproken tekst en geef een JSON response met precies deze structuur (geen uitleg, alleen JSON):\n{"notitie": "# Titel\\n\\nInhoud"}\n\nMaak de notitie rijk opgemaakt in Obsidian markdown. Regels:\n- De titel bevat GEEN datum\n- Zet direct onder de titel: \uD83D\uDCC5 Datum: ' + dateDisplay + ' | \uD83D\uDD50 Tijd: ' + timeStr + ' | ' + dagNaam + '\n- Gebruik ALTIJD emoji-icoontjes bij sectiekoppen, bijv. \uD83D\uDCCC ## Actie, \uD83D\uDCDD ## Notitie aan mezelf, \uD83D\uDCA1 ## Idee, \u2705 ## Taken, \u26A0\uFE0F ## Probleem, \uD83D\uDD04 ## Status, \uD83D\uDCCB ## Voorbereiding\n- Gebruik checkboxes (- [ ]) voor actiepunten\n- Gebruik **bold** voor belangrijke woorden\n\nGesproken tekst: "' + transcript + '"\n\nGeef ALLEEN de JSON terug, geen markdown backticks, geen uitleg.';
 
     var resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -436,15 +446,39 @@ async function saveNote() {
 
     var responseText = data.content[0].text.trim();
     var parsed;
-    try { parsed = JSON.parse(responseText); } catch(e) { parsed = { map: selectedFolder, notitie: responseText }; }
-    var autoMap = ['Work','InMyMind','Inbox','2026'].includes(parsed.map) ? parsed.map : selectedFolder;
-    highlightFolder(autoMap);
+    try { parsed = JSON.parse(responseText); } catch(e) { parsed = { notitie: responseText }; }
     var noteContent = parsed.notitie || responseText;
-    var titleMatch = noteContent.match(/^#\s+(.+)/m);
-    var title = titleMatch ? titleMatch[1].trim().replace(/[\/\\?%*:|"<>]/g, '-') : 'notitie-' + dateStr;
-    var filename = autoMap + '/' + dateStr + '-' + title + '.md';
-    await saveToGitHub(filename, noteContent);
-    showToast('Opgeslagen in ' + autoMap + '!');
+
+    var user = settings.githubUser;
+    var repo = settings.githubRepo;
+    var token = settings.githubToken;
+    var encodedPath = filename.split('/').map(encodeURIComponent).join('/');
+    var url = 'https://api.github.com/repos/' + user + '/' + repo + '/contents/' + encodedPath;
+
+    var existingContent = null;
+    var sha = null;
+    var check = await fetch(url, { headers: { Authorization: 'token ' + token } });
+    if (check.ok) {
+      var fileData = await check.json();
+      sha = fileData.sha;
+      existingContent = decodeURIComponent(escape(atob(fileData.content.replace(/\n/g, ''))));
+    }
+
+    var finalContent;
+    if (existingContent === null) {
+      finalContent = vitalityLink + '\n\n' + noteContent;
+    } else {
+      var bodyContent = noteContent.replace(/^#\s+[^\n]+\n/, '').trimStart();
+      finalContent = existingContent.trimEnd() + '\n\n---\n\n\uD83D\uDD50 ' + timeStr + '\n\n' + bodyContent;
+    }
+
+    var encoded = btoa(unescape(encodeURIComponent(finalContent)));
+    var body = { message: 'AI-agent: ' + dateStr, content: encoded };
+    if (sha) body.sha = sha;
+    var r = await fetch(url, { method: 'PUT', headers: { Authorization: 'token ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) { var err = await r.json(); throw new Error(err.message || 'GitHub fout'); }
+
+    showToast('Opgeslagen in dagnotitie!');
     var box = document.getElementById('response-box');
     box.style.display = 'block';
     box.textContent = 'Opgeslagen als:\n' + filename;
